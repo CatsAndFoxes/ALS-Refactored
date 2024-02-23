@@ -96,7 +96,11 @@ protected:
 	FGameplayTag MaxAllowedGait{AlsGaitTags::Walking};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
-	bool bMovementModeLocked;
+	uint8 bMovementModeLocked : 1;
+
+	// Used to temporarily prohibit the player from moving the character. Also works for AI-controlled characters.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
+	uint8 bInputBlocked : 1;
 
 	// Valid only on locally controlled characters.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
@@ -109,7 +113,7 @@ protected:
 	FVector PrePenetrationAdjustmentVelocity;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
-	bool bPrePenetrationAdjustmentVelocityValid;
+	uint8 bPrePenetrationAdjustmentVelocityValid : 1;
 
 public:
 	FAlsPhysicsRotationDelegate OnPhysicsRotation;
@@ -127,7 +131,12 @@ public:
 
 	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
 
+	virtual bool ShouldPerformAirControlForPathFollowing() const override;
+
 	virtual void UpdateBasedRotation(FRotator& FinalRotation, const FRotator& ReducedRotation) override;
+
+	virtual bool ApplyRequestedMove(float DeltaTime, float CurrentMaxAcceleration, float MaxSpeed, float Friction,
+	                                float BrakingDeceleration, FVector& RequestedAcceleration, float& RequestedSpeed) override;
 
 	virtual void CalcVelocity(float DeltaTime, float Friction, bool bFluid, float BrakingDeceleration) override;
 
@@ -193,6 +202,8 @@ public:
 	float CalculateGaitAmount() const;
 
 	void SetMovementModeLocked(bool bNewMovementModeLocked);
+
+	void SetInputBlocked(bool bNewInputBlocked);
 
 	bool TryConsumePrePenetrationAdjustmentVelocity(FVector& OutVelocity);
 };

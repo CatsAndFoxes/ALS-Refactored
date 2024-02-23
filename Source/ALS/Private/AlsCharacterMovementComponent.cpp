@@ -205,6 +205,11 @@ void UAlsCharacterMovementComponent::OnMovementModeChanged(const EMovementMode P
 	bCrouchMaintainsBaseLocation = true;
 }
 
+bool UAlsCharacterMovementComponent::ShouldPerformAirControlForPathFollowing() const
+{
+	return !bInputBlocked && Super::ShouldPerformAirControlForPathFollowing();
+}
+
 void UAlsCharacterMovementComponent::UpdateBasedRotation(FRotator& FinalRotation, const FRotator& ReducedRotation)
 {
 	// Ignore the parent implementation of this function and provide our own, because the parent
@@ -229,6 +234,14 @@ void UAlsCharacterMovementComponent::UpdateBasedRotation(FRotator& FinalRotation
 
 		CharacterOwner->Controller->SetControlRotation(NewControlRotation);
 	}
+}
+
+bool UAlsCharacterMovementComponent::ApplyRequestedMove(const float DeltaTime, const float CurrentMaxAcceleration,
+                                                        const float MaxSpeed, const float Friction, const float BrakingDeceleration,
+                                                        FVector& RequestedAcceleration, float& RequestedSpeed)
+{
+	return !bInputBlocked && Super::ApplyRequestedMove(DeltaTime, CurrentMaxAcceleration, MaxSpeed, Friction,
+	                                                   BrakingDeceleration, RequestedAcceleration, RequestedSpeed);
 }
 
 void UAlsCharacterMovementComponent::CalcVelocity(const float DeltaTime, const float Friction,
@@ -292,8 +305,8 @@ void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 It
 		GroundFriction = GaitSettings.AccelerationAndDecelerationAndGroundFrictionCurve->FloatCurves[2].Eval(CalculateGaitAmount());
 	}
 
-	// TODO Copied with modifications from UCharacterMovementComponent::PhysWalking().
-	// TODO After the release of a new engine version, this code should be updated to match the source code.
+	// TODO Copied with modifications from UCharacterMovementComponent::PhysWalking(). After the
+	// TODO release of a new engine version, this code should be updated to match the source code.
 
 	// ReSharper disable All
 
@@ -583,6 +596,11 @@ FVector UAlsCharacterMovementComponent::ConsumeInputVector()
 {
 	auto InputVector{Super::ConsumeInputVector()};
 
+	if (bInputBlocked)
+	{
+		return FVector::ZeroVector;
+	}
+
 	FRotator BaseRotationSpeed;
 	if (!bIgnoreBaseRotation && UAlsUtility::TryGetMovementBaseRotationSpeed(CharacterOwner->GetBasedMovement(), BaseRotationSpeed))
 	{
@@ -833,7 +851,7 @@ void UAlsCharacterMovementComponent::MoveAutonomous(const float ClientTimeStamp,
 		auto* Character{Cast<AAlsCharacter>(CharacterOwner)};
 		if (IsValid(Character))
 		{
-			Character->CorrectViewNetworkSmoothing(NewControlRotation);
+			Character->CorrectViewNetworkSmoothing(NewControlRotation, false);
 		}
 
 		PreviousControlRotation = NewControlRotation;
@@ -949,6 +967,11 @@ float UAlsCharacterMovementComponent::CalculateGaitAmount() const
 void UAlsCharacterMovementComponent::SetMovementModeLocked(const bool bNewMovementModeLocked)
 {
 	bMovementModeLocked = bNewMovementModeLocked;
+}
+
+void UAlsCharacterMovementComponent::SetInputBlocked(const bool bNewInputBlocked)
+{
+	bInputBlocked = bNewInputBlocked;
 }
 
 bool UAlsCharacterMovementComponent::TryConsumePrePenetrationAdjustmentVelocity(FVector& OutVelocity)

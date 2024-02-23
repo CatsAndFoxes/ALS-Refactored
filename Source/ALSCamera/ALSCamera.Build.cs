@@ -9,9 +9,14 @@ public class ALSCamera : ModuleRules
 
 		bEnableNonInlinedGenCppWarnings = true;
 
-		PrivateDependencyModuleNames.AddRange(new[]
+		PublicDependencyModuleNames.AddRange(new[]
 		{
 			"Core", "CoreUObject", "Engine", "GameplayTags", "ALS"
+		});
+
+		PrivateDependencyModuleNames.AddRange(new[]
+		{
+			"EngineSettings"
 		});
 	}
 }

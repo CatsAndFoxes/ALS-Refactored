@@ -15,7 +15,7 @@ struct ALS_API FAlsSpringFloatState
 	float PreviousTarget{ForceInit};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	bool bStateValid{false};
+	uint8 bStateValid : 1 {false};
 
 	void Reset();
 };
@@ -32,7 +32,7 @@ struct ALS_API FAlsSpringVectorState
 	FVector PreviousTarget{ForceInit};
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ALS")
-	bool bStateValid{false};
+	uint8 bStateValid : 1 {false};
 
 	void Reset();
 };
@@ -99,7 +99,7 @@ public:
 
 	// Remaps the angle from the [175, 180] range to [-185, -180]. Used to
 	// make the character rotate counterclockwise during a 180 degree turn.
-	template <typename ValueType>
+	template <typename ValueType> requires std::is_floating_point_v<ValueType>
 	static constexpr float RemapAngleForCounterClockwiseRotation(ValueType Angle);
 
 	UFUNCTION(BlueprintPure, Category = "ALS|Math|Vector", Meta = (AutoCreateRefTerm = "Vector", ReturnDisplayName = "Vector"))
@@ -153,7 +153,7 @@ public:
 	                                   FVector& ProjectionLocation, FVector& Direction);
 };
 
-template <typename ValueType>
+template <typename ValueType> requires std::is_floating_point_v<ValueType>
 constexpr float UAlsMath::RemapAngleForCounterClockwiseRotation(const ValueType Angle)
 {
 	if (Angle > 180.0f - CounterClockwiseRotationAngleThreshold)
@@ -323,7 +323,7 @@ ValueType UAlsMath::SpringDamp(const ValueType& Current, const ValueType& Target
 
 	ValueType Result{Current};
 	FMath::SpringDamper(Result, SpringState.Velocity, Target,
-	                    (Target - SpringState.PreviousTarget) * (Clamp01(TargetVelocityAmount) / DeltaTime),
+	                    (Target - SpringState.PreviousTarget) * Clamp01(TargetVelocityAmount) / DeltaTime,
 	                    DeltaTime, Frequency, DampingRatio);
 
 	SpringState.PreviousTarget = Target;
