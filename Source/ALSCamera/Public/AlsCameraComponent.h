@@ -14,10 +14,11 @@ class ALSCAMERA_API UAlsCameraComponent : public USkeletalMeshComponent
 {
 	GENERATED_BODY()
 
-protected:
+public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
 	TObjectPtr<UAlsCameraSettings> Settings;
 
+protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Settings", Meta = (ClampMin = 0, ClampMax = 1))
 	float PostProcessWeight;
 
