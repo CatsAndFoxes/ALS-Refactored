@@ -385,7 +385,7 @@ void AAlsCharacter::RefreshMeshProperties() const
 		}
 	}
 
-	if (!bMeshIsTicking && AnimationInstance)
+	if (!bMeshIsTicking && AnimationInstance.IsValid())
 	{
 		AnimationInstance->MarkPendingUpdate();
 	}
