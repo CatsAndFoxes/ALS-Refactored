@@ -18,6 +18,9 @@ public:
 	TArray<FGameplayTag> Tags;
 #endif
 
+public:
+	virtual ~FAlsAnimNode_GameplayTagsBlend() override = default; // Required by Clang.
+
 protected:
 	virtual int32 GetActiveChildIndex() override;
 
@@ -27,6 +30,6 @@ public:
 	const TArray<FGameplayTag>& GetTags() const;
 
 #if WITH_EDITOR
-	void RefreshPoses();
+	void RefreshPosePins();
 #endif
 };

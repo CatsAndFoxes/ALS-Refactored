@@ -64,14 +64,14 @@ void FAlsSavedMove::SetMoveFor(ACharacter* Character, const float NewDeltaTime, 
 	}
 }
 
-bool FAlsSavedMove::CanCombineWith(const FSavedMovePtr& NewMovePtr, ACharacter* Character, const float MaxDelta) const
+bool FAlsSavedMove::CanCombineWith(const FSavedMovePtr& NewMovePtr, ACharacter* Character, const float MaxDeltaTime) const
 {
 	const auto* NewMove{static_cast<FAlsSavedMove*>(NewMovePtr.Get())};
 
 	return RotationMode == NewMove->RotationMode &&
 	       Stance == NewMove->Stance &&
 	       MaxAllowedGait == NewMove->MaxAllowedGait &&
-	       Super::CanCombineWith(NewMovePtr, Character, MaxDelta);
+	       Super::CanCombineWith(NewMovePtr, Character, MaxDeltaTime);
 }
 
 void FAlsSavedMove::CombineWith(const FSavedMove_Character* PreviousMove, ACharacter* Character,
@@ -86,13 +86,15 @@ void FAlsSavedMove::CombineWith(const FSavedMove_Character* PreviousMove, AChara
 
 	const auto* UpdatedComponent{Character->GetCharacterMovement()->UpdatedComponent.Get()};
 
-	const_cast<FSavedMove_Character*>(PreviousMove)->StartRotation = UpdatedComponent->GetComponentRotation();
-	const_cast<FSavedMove_Character*>(PreviousMove)->StartAttachRelativeRotation = UpdatedComponent->GetRelativeRotation();
+	auto* MutablePreviousMove{const_cast<FSavedMove_Character*>(PreviousMove)};
+
+	MutablePreviousMove->StartRotation = UpdatedComponent->GetComponentRotation();
+	MutablePreviousMove->StartAttachRelativeRotation = UpdatedComponent->GetRelativeRotation();
 
 	Super::CombineWith(PreviousMove, Character, Player, PreviousStartLocation);
 
-	const_cast<FSavedMove_Character*>(PreviousMove)->StartRotation = OriginalRotation;
-	const_cast<FSavedMove_Character*>(PreviousMove)->StartAttachRelativeRotation = OriginalRelativeRotation;
+	MutablePreviousMove->StartRotation = OriginalRotation;
+	MutablePreviousMove->StartAttachRelativeRotation = OriginalRelativeRotation;
 }
 
 void FAlsSavedMove::PrepMoveFor(ACharacter* Character)
@@ -185,6 +187,25 @@ void UAlsCharacterMovementComponent::BeginPlay()
 	                   TEXT("These settings are not allowed and must be turned off!"));
 
 	Super::BeginPlay();
+}
+
+FVector UAlsCharacterMovementComponent::ConsumeInputVector()
+{
+	auto InputVector{Super::ConsumeInputVector()};
+
+	if (bInputBlocked)
+	{
+		return FVector::ZeroVector;
+	}
+
+	FRotator BaseRotationSpeed;
+	if (!bIgnoreBaseRotation && UAlsUtility::TryGetMovementBaseRotationSpeed(CharacterOwner->GetBasedMovement(), BaseRotationSpeed))
+	{
+		// Offset the input vector to keep it relative to the movement base.
+		InputVector = (BaseRotationSpeed * GetWorld()->GetDeltaSeconds()).RotateVector(InputVector);
+	}
+
+	return InputVector;
 }
 
 void UAlsCharacterMovementComponent::SetMovementMode(const EMovementMode NewMovementMode, const uint8 NewCustomMode)
@@ -394,10 +415,10 @@ void UAlsCharacterMovementComponent::PhysWalking(const float DeltaTime, int32 It
 			if ( IsFalling() )
 			{
 				// pawn decided to jump up
-				const float DesiredDist = Delta.Size();
+				const float DesiredDist = UE_REAL_TO_FLOAT(Delta.Size());
 				if (DesiredDist > UE_KINDA_SMALL_NUMBER)
 				{
-					const float ActualDist = (UpdatedComponent->GetComponentLocation() - OldLocation).Size2D();
+					const float ActualDist = UE_REAL_TO_FLOAT((UpdatedComponent->GetComponentLocation() - OldLocation).Size2D());
 					remainingTime += timeTick * (1.f - FMath::Min(1.f,ActualDist/DesiredDist));
 				}
 				StartNewPhysics(remainingTime,Iterations);
@@ -592,28 +613,9 @@ void UAlsCharacterMovementComponent::PhysCustom(const float DeltaTime, int32 Ite
 	Super::PhysCustom(DeltaTime, Iterations);
 }
 
-FVector UAlsCharacterMovementComponent::ConsumeInputVector()
-{
-	auto InputVector{Super::ConsumeInputVector()};
-
-	if (bInputBlocked)
-	{
-		return FVector::ZeroVector;
-	}
-
-	FRotator BaseRotationSpeed;
-	if (!bIgnoreBaseRotation && UAlsUtility::TryGetMovementBaseRotationSpeed(CharacterOwner->GetBasedMovement(), BaseRotationSpeed))
-	{
-		// Offset the input vector to keep it relative to the movement base.
-		InputVector = (BaseRotationSpeed * GetWorld()->GetDeltaSeconds()).RotateVector(InputVector);
-	}
-
-	return InputVector;
-}
-
-void UAlsCharacterMovementComponent::ComputeFloorDist(const FVector& CapsuleLocation, float LineDistance, float SweepDistance,
-                                                      FFindFloorResult& OutFloorResult, float SweepRadius,
-                                                      const FHitResult* DownwardSweepResult) const
+void UAlsCharacterMovementComponent::ComputeFloorDist(const FVector& CapsuleLocation, float LineDistance,
+                                                      float SweepDistance, FFindFloorResult& OutFloorResult,
+                                                      float SweepRadius, const FHitResult* DownwardSweepResult) const
 {
 	// TODO Copied with modifications from UCharacterMovementComponent::ComputeFloorDist().
 	// TODO After the release of a new engine version, this code should be updated to match the source code.
@@ -641,7 +643,7 @@ void UAlsCharacterMovementComponent::ComputeFloorDist(const FVector& CapsuleLoca
 				bSkipSweep = true;
 
 				const bool bIsWalkable = IsWalkable(*DownwardSweepResult);
-				const float FloorDist = RotateWorldToGravity(CapsuleLocation - DownwardSweepResult->Location).Z;
+				const float FloorDist = UE_REAL_TO_FLOAT(RotateWorldToGravity(CapsuleLocation - DownwardSweepResult->Location).Z);
 				OutFloorResult.SetFromSweep(*DownwardSweepResult, FloorDist, bIsWalkable);
 
 				if (bIsWalkable)
@@ -783,11 +785,11 @@ void UAlsCharacterMovementComponent::PerformMovement(const float DeltaTime)
 	{
 		if (CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy)
 		{
-			ServerLastTransformUpdateTimeStamp = GetPredictionData_Server_Character()->ServerAccumulatedClientTimeStamp;
+			ServerLastTransformUpdateTimeStamp = UE_REAL_TO_FLOAT(GetPredictionData_Server_Character()->ServerAccumulatedClientTimeStamp);
 		}
 		else
 		{
-			ServerLastTransformUpdateTimeStamp = GetWorld()->GetTimeSeconds();
+			ServerLastTransformUpdateTimeStamp = UE_REAL_TO_FLOAT(GetWorld()->GetTimeSeconds());
 		}
 	}
 }
@@ -815,11 +817,11 @@ void UAlsCharacterMovementComponent::SmoothClientPosition(const float DeltaTime)
 		// absolute mesh rotation since we're manually updating the mesh's rotation from the animation instance. So,
 		// to keep the rotation unchanged, we simply override the predicted rotations with the mesh's current rotation.
 
-		const auto Rotation{Mesh->GetComponentQuat() * CharacterOwner->GetBaseRotationOffset().Inverse()};
+		const auto NewRotation{Mesh->GetComponentQuat() * CharacterOwner->GetBaseRotationOffset().Inverse()};
 
-		PredictionData->OriginalMeshRotationOffset = Rotation;
-		PredictionData->MeshRotationOffset = Rotation;
-		PredictionData->MeshRotationTarget = Rotation;
+		PredictionData->OriginalMeshRotationOffset = NewRotation;
+		PredictionData->MeshRotationOffset = NewRotation;
+		PredictionData->MeshRotationTarget = NewRotation;
 	}
 
 	Super::SmoothClientPosition(DeltaTime);

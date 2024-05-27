@@ -12,9 +12,12 @@
 #include "RootMotionSources/AlsRootMotionSource_Mantling.h"
 #include "Settings/AlsCharacterSettings.h"
 #include "Utility/AlsConstants.h"
+#include "Utility/AlsDebugUtility.h"
 #include "Utility/AlsLog.h"
 #include "Utility/AlsMacros.h"
-#include "Utility/AlsUtility.h"
+#include "Utility/AlsMontageUtility.h"
+#include "Utility/AlsRotation.h"
+#include "Utility/AlsVector.h"
 
 void AAlsCharacter::StartRolling(const float PlayRate)
 {
@@ -86,11 +89,11 @@ void AAlsCharacter::MulticastStartRolling_Implementation(UAnimMontage* Montage, 
 void AAlsCharacter::StartRollingImplementation(UAnimMontage* Montage, const float PlayRate,
                                                const float InitialYawAngle, const float TargetYawAngle)
 {
-	if (IsRollingAllowedToStart(Montage) && GetMesh()->GetAnimInstance()->Montage_Play(Montage, PlayRate))
+	if (IsRollingAllowedToStart(Montage) && GetMesh()->GetAnimInstance()->Montage_Play(Montage, PlayRate) > 0.0f)
 	{
 		RollingState.TargetYawAngle = TargetYawAngle;
 
-		RefreshRotationInstant(InitialYawAngle);
+		SetRotationInstant(InitialYawAngle);
 
 		SetLocomotionAction(AlsLocomotionActionTags::Rolling);
 	}
@@ -126,9 +129,9 @@ void AAlsCharacter::RefreshRollingPhysics(const float DeltaTime)
 	}
 	else
 	{
-		TargetRotation.Yaw = UAlsMath::ExponentialDecayAngle(UE_REAL_TO_FLOAT(FRotator::NormalizeAxis(TargetRotation.Yaw)),
-		                                                     RollingState.TargetYawAngle, DeltaTime,
-		                                                     Settings->Rolling.RotationInterpolationSpeed);
+		TargetRotation.Yaw = UAlsRotation::ExponentialDecayAngle(UE_REAL_TO_FLOAT(FRotator::NormalizeAxis(TargetRotation.Yaw)),
+		                                                         RollingState.TargetYawAngle, DeltaTime,
+		                                                         Settings->Rolling.RotationInterpolationSpeed);
 
 		GetCharacterMovement()->MoveUpdatedComponent(FVector::ZeroVector, TargetRotation, false);
 	}
@@ -182,12 +185,12 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 	}
 
 	const auto ForwardTraceDirection{
-		UAlsMath::AngleToDirectionXY(
+		UAlsVector::AngleToDirectionXY(
 			ActorYawAngle + FMath::ClampAngle(ForwardTraceDeltaAngle, -Settings->Mantling.MaxReachAngle, Settings->Mantling.MaxReachAngle))
 	};
 
 #if ENABLE_DRAW_DEBUG
-	const auto bDisplayDebug{UAlsUtility::ShouldDisplayDebugForActor(this, UAlsConstants::MantlingDebugDisplayName())};
+	const auto bDisplayDebug{UAlsDebugUtility::ShouldDisplayDebugForActor(this, UAlsConstants::MantlingDebugDisplayName())};
 #endif
 
 	const auto* Capsule{GetCapsuleComponent()};
@@ -231,7 +234,7 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 #if ENABLE_DRAW_DEBUG
 		if (bDisplayDebug)
 		{
-			UAlsUtility::DrawDebugSweepSingleCapsuleAlternative(GetWorld(), ForwardTraceStart, ForwardTraceEnd, TraceCapsuleRadius,
+			UAlsDebugUtility::DrawSweepSingleCapsuleAlternative(GetWorld(), ForwardTraceStart, ForwardTraceEnd, TraceCapsuleRadius,
 			                                                    ForwardTraceCapsuleHalfHeight, false, ForwardTraceHit, {0.0f, 0.25f, 1.0f},
 			                                                    {0.0f, 0.75f, 1.0f}, TraceSettings.bDrawFailedTraces ? 5.0f : 0.0f);
 		}
@@ -284,11 +287,11 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 #if ENABLE_DRAW_DEBUG
 		if (bDisplayDebug)
 		{
-			UAlsUtility::DrawDebugSweepSingleCapsuleAlternative(GetWorld(), ForwardTraceStart, ForwardTraceEnd, TraceCapsuleRadius,
+			UAlsDebugUtility::DrawSweepSingleCapsuleAlternative(GetWorld(), ForwardTraceStart, ForwardTraceEnd, TraceCapsuleRadius,
 			                                                    ForwardTraceCapsuleHalfHeight, true, ForwardTraceHit, {0.0f, 0.25f, 1.0f},
 			                                                    {0.0f, 0.75f, 1.0f}, TraceSettings.bDrawFailedTraces ? 5.0f : 0.0f);
 
-			UAlsUtility::DrawDebugSweepSingleSphere(GetWorld(), DownwardTraceStart, DownwardTraceEnd, TraceCapsuleRadius,
+			UAlsDebugUtility::DrawSweepSingleSphere(GetWorld(), DownwardTraceStart, DownwardTraceEnd, TraceCapsuleRadius,
 			                                        false, DownwardTraceHit, {0.25f, 0.0f, 1.0f}, {0.75f, 0.0f, 1.0f},
 			                                        TraceSettings.bDrawFailedTraces ? 7.5f : 0.0f);
 		}
@@ -316,11 +319,11 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 #if ENABLE_DRAW_DEBUG
 		if (bDisplayDebug)
 		{
-			UAlsUtility::DrawDebugSweepSingleCapsuleAlternative(GetWorld(), ForwardTraceStart, ForwardTraceEnd, TraceCapsuleRadius,
+			UAlsDebugUtility::DrawSweepSingleCapsuleAlternative(GetWorld(), ForwardTraceStart, ForwardTraceEnd, TraceCapsuleRadius,
 			                                                    ForwardTraceCapsuleHalfHeight, true, ForwardTraceHit, {0.0f, 0.25f, 1.0f},
 			                                                    {0.0f, 0.75f, 1.0f}, TraceSettings.bDrawFailedTraces ? 5.0f : 0.0f);
 
-			UAlsUtility::DrawDebugSweepSingleSphere(GetWorld(), DownwardTraceStart, DownwardTraceEnd, TraceCapsuleRadius,
+			UAlsDebugUtility::DrawSweepSingleSphere(GetWorld(), DownwardTraceStart, DownwardTraceEnd, TraceCapsuleRadius,
 			                                        false, DownwardTraceHit, {0.25f, 0.0f, 1.0f}, {0.75f, 0.0f, 1.0f},
 			                                        TraceSettings.bDrawFailedTraces ? 7.5f : 0.0f);
 
@@ -345,7 +348,9 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 		(DownwardTraceHit.Location.Z + DownwardTraceEnd.Z) * 0.5f
 	};
 
-	const auto StartLocationTraceCapsuleHalfHeight{(DownwardTraceHit.Location.Z - DownwardTraceEnd.Z) * 0.5f + TraceCapsuleRadius};
+	const auto StartLocationTraceCapsuleHalfHeight{
+		UE_REAL_TO_FLOAT(DownwardTraceHit.Location.Z - DownwardTraceEnd.Z) * 0.5f + TraceCapsuleRadius
+	};
 
 	if (GetWorld()->OverlapBlockingTestByChannel(StartLocation, FQuat::Identity, Settings->Mantling.MantlingTraceChannel,
 	                                             FCollisionShape::MakeCapsule(TraceCapsuleRadius, StartLocationTraceCapsuleHalfHeight),
@@ -354,12 +359,12 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 #if ENABLE_DRAW_DEBUG
 		if (bDisplayDebug)
 		{
-			UAlsUtility::DrawDebugSweepSingleCapsuleAlternative(GetWorld(), ForwardTraceStart, ForwardTraceEnd, TraceCapsuleRadius,
+			UAlsDebugUtility::DrawSweepSingleCapsuleAlternative(GetWorld(), ForwardTraceStart, ForwardTraceEnd, TraceCapsuleRadius,
 			                                                    ForwardTraceCapsuleHalfHeight, true, ForwardTraceHit,
 			                                                    {0.0f, 0.25f, 1.0f},
 			                                                    {0.0f, 0.75f, 1.0f}, TraceSettings.bDrawFailedTraces ? 5.0f : 0.0f);
 
-			UAlsUtility::DrawDebugSweepSingleSphere(GetWorld(), DownwardTraceStart, DownwardTraceEnd, TraceCapsuleRadius,
+			UAlsDebugUtility::DrawSweepSingleSphere(GetWorld(), DownwardTraceStart, DownwardTraceEnd, TraceCapsuleRadius,
 			                                        false, DownwardTraceHit, {0.25f, 0.0f, 1.0f}, {0.75f, 0.0f, 1.0f},
 			                                        TraceSettings.bDrawFailedTraces ? 7.5f : 0.0f);
 
@@ -374,11 +379,11 @@ bool AAlsCharacter::StartMantling(const FAlsMantlingTraceSettings& TraceSettings
 #if ENABLE_DRAW_DEBUG
 	if (bDisplayDebug)
 	{
-		UAlsUtility::DrawDebugSweepSingleCapsuleAlternative(GetWorld(), ForwardTraceStart, ForwardTraceEnd, TraceCapsuleRadius,
+		UAlsDebugUtility::DrawSweepSingleCapsuleAlternative(GetWorld(), ForwardTraceStart, ForwardTraceEnd, TraceCapsuleRadius,
 		                                                    ForwardTraceCapsuleHalfHeight, true, ForwardTraceHit,
 		                                                    {0.0f, 0.25f, 1.0f}, {0.0f, 0.75f, 1.0f}, 5.0f);
 
-		UAlsUtility::DrawDebugSweepSingleSphere(GetWorld(), DownwardTraceStart, DownwardTraceEnd,
+		UAlsDebugUtility::DrawSweepSingleSphere(GetWorld(), DownwardTraceStart, DownwardTraceEnd,
 		                                        TraceCapsuleRadius, true, DownwardTraceHit,
 		                                        {0.25f, 0.0f, 1.0f}, {0.75f, 0.0f, 1.0f}, 7.5f);
 	}
@@ -464,7 +469,7 @@ void AAlsCharacter::StartMantlingImplementation(const FAlsMantlingParameters& Pa
 	const auto Duration{MantlingSettings->Montage->GetPlayLength() - StartTime};
 	const auto PlayRate{MantlingSettings->Montage->RateScale};
 
-	const auto TargetAnimationLocation{UAlsUtility::ExtractLastRootTransformFromMontage(MantlingSettings->Montage).GetLocation()};
+	const auto TargetAnimationLocation{UAlsMontageUtility::ExtractLastRootTransformFromMontage(MantlingSettings->Montage).GetLocation()};
 
 	if (FMath::IsNearlyZero(TargetAnimationLocation.Z))
 	{
@@ -524,9 +529,7 @@ void AAlsCharacter::StartMantlingImplementation(const FAlsMantlingParameters& Pa
 
 	// Play the animation montage if valid.
 
-	if (GetMesh()->GetAnimInstance()->Montage_Play(MantlingSettings->Montage, 1.0f,
-	                                               EMontagePlayReturnType::MontageLength,
-	                                               StartTime, false))
+	if (GetMesh()->GetAnimInstance()->Montage_Play(MantlingSettings->Montage) > 0.0f)
 	{
 		SetLocomotionAction(AlsLocomotionActionTags::Mantling);
 	}
@@ -559,8 +562,8 @@ float AAlsCharacter::CalculateMantlingStartTime(const UAlsMantlingSettings* Mant
 	auto SearchStartTime{0.0f};
 	auto SearchEndTime{Montage->GetPlayLength()};
 
-	const auto SearchStartLocationZ{UAlsUtility::ExtractRootTransformFromMontage(Montage, SearchStartTime).GetTranslation().Z};
-	const auto SearchEndLocationZ{UAlsUtility::ExtractRootTransformFromMontage(Montage, SearchEndTime).GetTranslation().Z};
+	const auto SearchStartLocationZ{UAlsMontageUtility::ExtractRootTransformFromMontage(Montage, SearchStartTime).GetTranslation().Z};
+	const auto SearchEndLocationZ{UAlsMontageUtility::ExtractRootTransformFromMontage(Montage, SearchEndTime).GetTranslation().Z};
 
 	// Find the vertical distance the character has already moved.
 
@@ -578,7 +581,7 @@ float AAlsCharacter::CalculateMantlingStartTime(const UAlsMantlingSettings* Mant
 	while (true)
 	{
 		const auto Time{(SearchStartTime + SearchEndTime) * 0.5f};
-		const auto LocationZ{UAlsUtility::ExtractRootTransformFromMontage(Montage, Time).GetTranslation().Z};
+		const auto LocationZ{UAlsMontageUtility::ExtractRootTransformFromMontage(Montage, Time).GetTranslation().Z};
 
 		// Stop the search if a close enough location has been found or if
 		// the search interval is less than the animation montage frame rate.
@@ -623,7 +626,7 @@ void AAlsCharacter::RefreshMantling()
 
 	const auto* RootMotionSource{
 		StaticCastSharedPtr<FAlsRootMotionSource_Mantling>(GetCharacterMovement()
-			->GetRootMotionSourceByID(MantlingState.RootMotionSourceId)).Get()
+			->GetRootMotionSourceByID(static_cast<uint16>(MantlingState.RootMotionSourceId))).Get()
 	};
 
 	if (RootMotionSource != nullptr && !RootMotionSource->TargetPrimitive.IsValid())
@@ -646,7 +649,7 @@ void AAlsCharacter::StopMantling(const bool bStopMontage)
 
 	auto* RootMotionSource{
 		StaticCastSharedPtr<FAlsRootMotionSource_Mantling>(GetCharacterMovement()
-			->GetRootMotionSourceByID(MantlingState.RootMotionSourceId)).Get()
+			->GetRootMotionSourceByID(static_cast<uint16>(MantlingState.RootMotionSourceId))).Get()
 	};
 
 	if (RootMotionSource != nullptr)
@@ -675,7 +678,11 @@ void AAlsCharacter::OnMantlingEnded_Implementation() {}
 
 bool AAlsCharacter::IsRagdollingAllowedToStart() const
 {
-	return LocomotionAction != AlsLocomotionActionTags::Ragdolling;
+	return LocomotionAction != AlsLocomotionActionTags::Ragdolling &&
+	       ALS_ENSURE_MESSAGE(GetMesh()->GetBodyInstance(UAlsConstants::PelvisBoneName()) != nullptr &&
+	                          GetMesh()->GetBodyInstance(UAlsConstants::Spine03BoneName()) != nullptr,
+	                          TEXT("A physics asset with the %s and %s bones are required for the ragdolling to work."),
+	                          *UAlsConstants::PelvisBoneName().ToString(), *UAlsConstants::Spine03BoneName().ToString());
 }
 
 void AAlsCharacter::StartRagdolling()
@@ -768,9 +775,14 @@ void AAlsCharacter::StartRagdollingImplementation()
 		static constexpr auto MinSpeedLimit{200.0f};
 
 		RagdollingState.SpeedLimitFrameTimeRemaining = 8;
-		RagdollingState.SpeedLimit = FMath::Max(MinSpeedLimit, LocomotionState.Velocity.Size());
+		RagdollingState.SpeedLimit = FMath::Max(MinSpeedLimit, UE_REAL_TO_FLOAT(LocomotionState.Velocity.Size()));
 
-		LimitRagdollSpeed();
+		ConstraintRagdollSpeed();
+	}
+
+	if (GetLocalRole() >= ROLE_Authority)
+	{
+		SetRagdollTargetLocation(FVector::ZeroVector);
 	}
 
 	if (IsLocallyControlled() || (GetLocalRole() >= ROLE_Authority && !IsValid(GetController())))
@@ -901,28 +913,49 @@ void AAlsCharacter::RefreshRagdolling(const float DeltaTime)
 	{
 		RagdollingState.SpeedLimitFrameTimeRemaining -= 1;
 
-		LimitRagdollSpeed();
+		ConstraintRagdollSpeed();
 	}
 }
 
 FVector AAlsCharacter::RagdollTraceGround(bool& bGrounded) const
 {
+	auto RagdollLocation{!RagdollTargetLocation.IsZero() ? FVector{RagdollTargetLocation} : GetActorLocation()};
+
+	// We use a sphere sweep instead of a simple line trace to keep capsule
+	// movement consistent between ragdolling and regular character movement.
+
+	const auto CapsuleRadius{GetCapsuleComponent()->GetScaledCapsuleRadius()};
 	const auto CapsuleHalfHeight{GetCapsuleComponent()->GetScaledCapsuleHalfHeight()};
 
-	const auto TraceStart{!RagdollTargetLocation.IsZero() ? FVector{RagdollTargetLocation} : GetActorLocation()};
-	const FVector TraceEnd{TraceStart.X, TraceStart.Y, TraceStart.Z - CapsuleHalfHeight};
+	const FVector TraceStart{RagdollLocation.X, RagdollLocation.Y, RagdollLocation.Z + 2.0f * CapsuleRadius};
+	const FVector TraceEnd{RagdollLocation.X, RagdollLocation.Y, RagdollLocation.Z - CapsuleHalfHeight + CapsuleRadius};
+
+	const auto CollisionChannel{GetCharacterMovement()->UpdatedComponent->GetCollisionObjectType()};
+
+	FCollisionQueryParams QueryParameters{__FUNCTION__, false, this};
+	FCollisionResponseParams ResponseParameters;
+	GetCharacterMovement()->InitCollisionParams(QueryParameters, ResponseParameters);
 
 	FHitResult Hit;
-	bGrounded = GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, Settings->Ragdolling.GroundTraceChannel,
-	                                                 {__FUNCTION__, false, this}, Settings->Ragdolling.GroundTraceResponses);
+	bGrounded = GetWorld()->SweepSingleByChannel(Hit, TraceStart, TraceEnd, FQuat::Identity,
+	                                             CollisionChannel, FCollisionShape::MakeSphere(CapsuleRadius),
+	                                             QueryParameters, ResponseParameters);
 
-	return {
-		TraceStart.X, TraceStart.Y,
-		bGrounded ? Hit.ImpactPoint.Z + CapsuleHalfHeight + UCharacterMovementComponent::MIN_FLOOR_DIST : TraceStart.Z
+	// #if ENABLE_DRAW_DEBUG
+	// 	UAlsDebugUtility::DrawSweepSingleSphere(GetWorld(), TraceStart, TraceEnd, CapsuleRadius,
+	// 	                                        bGrounded, Hit, {0.0f, 0.25f, 1.0f},
+	// 	                                        {0.0f, 0.75f, 1.0f}, 0.0f);
+	// #endif
+
+	return FVector{
+		RagdollLocation.X, RagdollLocation.Y,
+		bGrounded
+			? Hit.Location.Z + CapsuleHalfHeight - CapsuleRadius + UCharacterMovementComponent::MIN_FLOOR_DIST
+			: RagdollLocation.Z
 	};
 }
 
-void AAlsCharacter::LimitRagdollSpeed() const
+void AAlsCharacter::ConstraintRagdollSpeed() const
 {
 	GetMesh()->ForEachBodyBelow(NAME_None, true, false, [this](FBodyInstance* Body)
 	{
@@ -1056,8 +1089,6 @@ void AAlsCharacter::StopRagdollingImplementation()
 		FinalRagdollPose.LocalTransforms[PelvisBoneIndex] = PelvisTransform.GetRelativeTransform(GetMesh()->GetComponentTransform());
 	}
 
-	SetRagdollTargetLocation(FVector::ZeroVector);
-
 	// If the ragdoll is on the ground, set the movement mode to walking and play a get up montage. If not, set
 	// the movement mode to falling and update the character movement velocity to match the last ragdoll velocity.
 
@@ -1077,9 +1108,7 @@ void AAlsCharacter::StopRagdollingImplementation()
 
 	OnRagdollingEnded();
 
-	if (bGrounded &&
-	    GetMesh()->GetAnimInstance()->Montage_Play(SelectGetUpMontage(bRagdollFacingUpward), 1.0f,
-	                                               EMontagePlayReturnType::MontageLength, 0.0f, true))
+	if (bGrounded && GetMesh()->GetAnimInstance()->Montage_Play(SelectGetUpMontage(bRagdollFacingUpward)) > 0.0f)
 	{
 		AlsCharacterMovement->SetInputBlocked(true);
 
