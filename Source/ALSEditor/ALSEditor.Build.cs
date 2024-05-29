@@ -10,7 +10,12 @@ public class ALSEditor : ModuleRules
 		bEnableNonInlinedGenCppWarnings = true;
 		// UnsafeTypeCastWarningLevel = WarningLevel.Warning;
 
-		PublicDependencyModuleNames.AddRange(new[]
+		PrivateDependencyModuleNames.AddRange(new[]
+        {
+            "AnimGraphRuntime"
+        });
+        
+        PublicDependencyModuleNames.AddRange(new[]
 		{
 			"Core", "CoreUObject", "Engine", "AnimationModifiers", "AnimationBlueprintLibrary", "ALS"
 		});
@@ -19,7 +24,8 @@ public class ALSEditor : ModuleRules
 		{
 			PublicDependencyModuleNames.AddRange(new[]
 			{
-				"AnimGraph"
+				"AnimGraph",
+				"AnimGraphRuntime",
 			});
 
 			PrivateDependencyModuleNames.AddRange(new[]
