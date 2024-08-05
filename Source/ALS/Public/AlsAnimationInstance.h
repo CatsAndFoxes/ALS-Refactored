@@ -24,7 +24,6 @@
 #include "Utility/AlsGameplayTags.h"
 #include "AlsAnimationInstance.generated.h"
 
-struct FAlsFootConstraintsSettings;
 class UAlsLinkedAnimationInstance;
 class AAlsCharacter;
 
@@ -43,7 +42,7 @@ protected:
 	TObjectPtr<AAlsCharacter> Character;
 
 	// Used to indicate that the animation instance has not been updated for a long time
-	// and its current state may not be correct (such as foot location used in foot locking).
+	// and its current state may not be correct (such as foot location used in foot lock).
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
 	uint8 bPendingUpdate : 1 {true};
 
@@ -271,30 +270,20 @@ protected:
 
 	// Feet
 
-public:
-	// Temporarily "pauses" foot locking for one frame. This is not the same as a complete
-	// shutdown because the internal state of the foot locking will continue to update.
-	void InhibitFootLockForOneFrame();
-
 private:
 	void RefreshFeetOnGameThread();
 
 	void RefreshFeet(float DeltaTime);
 
 	void RefreshFoot(FAlsFootState& FootState, const FName& IkCurveName, const FName& LockCurveName,
-	                 const FAlsFootConstraintsSettings& ConstraintsSettings, const FTransform& ComponentTransformInverse,
-	                 float DeltaTime) const;
+	                 const FTransform& ComponentTransformInverse, float DeltaTime) const;
 
-	void ProcessFootLockTeleport(FAlsFootState& FootState) const;
+	void ProcessFootLockTeleport(float IkAmount, FAlsFootState& FootState) const;
 
-	void ProcessFootLockBaseChange(FAlsFootState& FootState, const FTransform& ComponentTransformInverse) const;
+	void ProcessFootLockBaseChange(float IkAmount, FAlsFootState& FootState, const FTransform& ComponentTransformInverse) const;
 
-	void RefreshFootLock(FAlsFootState& FootState, const FName& LockCurveName, const FTransform& ComponentTransformInverse,
-	                     float DeltaTime, FVector& FinalLocation, FQuat& FinalRotation) const;
-
-	void RefreshFootOffset(FAlsFootState& FootState, float DeltaTime, FVector& FinalLocation, FQuat& FinalRotation) const;
-
-	void ConstraintFootRotation(const FAlsFootConstraintsSettings& ConstraintsSettings, const FQuat& ParentRotation, FQuat& Rotation) const;
+	void RefreshFootLock(float IkAmount, FAlsFootState& FootState, const FName& LockCurveName,
+	                     const FTransform& ComponentTransformInverse, float DeltaTime) const;
 
 	// Transitions
 

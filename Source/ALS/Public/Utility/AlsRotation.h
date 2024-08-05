@@ -3,19 +3,22 @@
 #include "AlsMath.h"
 #include "AlsRotation.generated.h"
 
-UCLASS()
+UCLASS(Meta = (BlueprintThreadSafe))
 class ALS_API UAlsRotation : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 
 public:
-	static constexpr auto CounterClockwiseRotationAngleThreshold{5.0f};
+	static constexpr auto ClockwiseRotationAngleThreshold{5.0f};
 
 public:
-	// Remaps the angle from the [175, 180] range to [-185, -180]. Used to
-	// make the character rotate counterclockwise during a 180 degree turn.
+	// Remaps the angle from the [-175, -180] range to [185, 180]. Used
+	// to make the character rotate clockwise during a 180 degree turn.
 	template <typename ValueType> requires std::is_floating_point_v<ValueType>
-	static constexpr ValueType RemapAngleForCounterClockwiseRotation(ValueType Angle);
+	static constexpr ValueType RemapAngleForClockwiseRotation(ValueType Angle);
+
+	UFUNCTION(BlueprintPure, Category = "ALS|Rotation Utility", Meta = (ReturnDisplayName = "Angle"))
+	static float RemapAngleForClockwiseRotation(float Angle);
 
 	UFUNCTION(BlueprintPure, Category = "ALS|Rotation Utility", Meta = (ReturnDisplayName = "Angle"))
 	static float LerpAngle(float From, float To, float Ratio);
@@ -40,25 +43,34 @@ public:
 		Meta = (AutoCreateRefTerm = "Current, Target", ReturnDisplayName = "Rotation"))
 	static FRotator ExponentialDecayRotation(const FRotator& Current, const FRotator& Target, float DeltaTime, float Lambda);
 
+	// Same as FMath::QInterpTo(), but uses FQuat::FastLerp() instead of FQuat::Slerp().
+	UFUNCTION(BlueprintPure, Category = "ALS|Rotation Utility", Meta = (ReturnDisplayName = "Quaternion"))
+	static FQuat InterpolateQuaternionFast(const FQuat& Current, const FQuat& Target, float DeltaTime, float Speed);
+
 	UFUNCTION(BlueprintPure, Category = "ALS|Rotation Utility", Meta = (AutoCreateRefTerm = "TwistAxis", ReturnDisplayName = "Twist"))
 	static FQuat GetTwist(const FQuat& Quaternion, const FVector& TwistAxis = FVector::UpVector);
 };
 
 template <typename ValueType> requires std::is_floating_point_v<ValueType>
-constexpr ValueType UAlsRotation::RemapAngleForCounterClockwiseRotation(const ValueType Angle)
+constexpr ValueType UAlsRotation::RemapAngleForClockwiseRotation(const ValueType Angle)
 {
-	if (Angle > 180.0f - CounterClockwiseRotationAngleThreshold)
+	if (Angle < -180.0f + ClockwiseRotationAngleThreshold)
 	{
-		return Angle - 360.0f;
+		return Angle + 360.0f;
 	}
 
 	return Angle;
 }
 
+inline float UAlsRotation::RemapAngleForClockwiseRotation(float Angle)
+{
+	return RemapAngleForClockwiseRotation<float>(Angle);
+}
+
 inline float UAlsRotation::LerpAngle(const float From, const float To, const float Ratio)
 {
 	auto Delta{FRotator3f::NormalizeAxis(To - From)};
-	Delta = RemapAngleForCounterClockwiseRotation(Delta);
+	Delta = RemapAngleForClockwiseRotation(Delta);
 
 	return FRotator3f::NormalizeAxis(From + Delta * Ratio);
 }
@@ -68,9 +80,9 @@ inline FRotator UAlsRotation::LerpRotation(const FRotator& From, const FRotator&
 	auto Result{To - From};
 	Result.Normalize();
 
-	Result.Pitch = RemapAngleForCounterClockwiseRotation(Result.Pitch);
-	Result.Yaw = RemapAngleForCounterClockwiseRotation(Result.Yaw);
-	Result.Roll = RemapAngleForCounterClockwiseRotation(Result.Roll);
+	Result.Pitch = RemapAngleForClockwiseRotation(Result.Pitch);
+	Result.Yaw = RemapAngleForClockwiseRotation(Result.Yaw);
+	Result.Roll = RemapAngleForClockwiseRotation(Result.Roll);
 
 	Result *= Ratio;
 	Result += From;
@@ -81,13 +93,13 @@ inline FRotator UAlsRotation::LerpRotation(const FRotator& From, const FRotator&
 
 inline float UAlsRotation::InterpolateAngleConstant(const float Current, const float Target, const float DeltaTime, const float Speed)
 {
-	if (Speed <= 0.0f || Current == Target)
+	if (Speed <= 0.0f || FMath::IsNearlyEqual(Current, Target))
 	{
 		return Target;
 	}
 
 	auto Delta{FRotator3f::NormalizeAxis(Target - Current)};
-	Delta = RemapAngleForCounterClockwiseRotation(Delta);
+	Delta = RemapAngleForClockwiseRotation(Delta);
 
 	const auto MaxDelta{Speed * DeltaTime};
 
@@ -121,6 +133,16 @@ inline FRotator UAlsRotation::ExponentialDecayRotation(const FRotator& Current, 
 	return Lambda > 0.0f
 		       ? LerpRotation(Current, Target, UAlsMath::ExponentialDecay(DeltaTime, Lambda))
 		       : Target;
+}
+
+inline FQuat UAlsRotation::InterpolateQuaternionFast(const FQuat& Current, const FQuat& Target, const float DeltaTime, const float Speed)
+{
+	if (Speed <= 0.0f || Current.Equals(Target))
+	{
+		return Target;
+	}
+
+	return FQuat::FastLerp(Current, Target, UAlsMath::Clamp01(Speed * DeltaTime)).GetNormalized();
 }
 
 inline FQuat UAlsRotation::GetTwist(const FQuat& Quaternion, const FVector& TwistAxis)

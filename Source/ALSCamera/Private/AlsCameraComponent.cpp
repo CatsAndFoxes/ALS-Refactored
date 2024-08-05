@@ -40,15 +40,12 @@ void UAlsCameraComponent::RegisterComponentTickFunctions(const bool bRegister)
 
 void UAlsCameraComponent::Activate(const bool bReset)
 {
-	if (!bReset && !ShouldActivate())
+	if (bReset || ShouldActivate())
 	{
-		Super::Activate(bReset);
-		return;
+		TickCamera(0.0f, false);
 	}
 
 	Super::Activate(bReset);
-
-	TickCamera(0.0f, false);
 }
 
 void UAlsCameraComponent::InitAnim(const bool bForceReinitialize)
@@ -147,7 +144,8 @@ void UAlsCameraComponent::GetViewInfo(FMinimalViewInfo& ViewInfo) const
 
 void UAlsCameraComponent::TickCamera(const float DeltaTime, bool bAllowLag)
 {
-	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("UAlsCameraComponent::TickCamera()"), STAT_UAlsCameraComponent_TickCamera, STATGROUP_Als)
+	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("UAlsCameraComponent::TickCamera"), STAT_UAlsCameraComponent_TickCamera, STATGROUP_Als)
+	TRACE_CPUPROFILER_EVENT_SCOPE(UAlsCameraComponent::TickCamera);
 
 	if (!IsValid(GetAnimInstance()) || !IsValid(Settings) || !IsValid(Character))
 	{
@@ -610,7 +608,6 @@ bool UAlsCameraComponent::TryAdjustLocationBlockedByGeometry(FVector& Location, 
 
 	static const FName FreeSpaceTraceTag{FString::Printf(TEXT("%hs (Free Space Overlap)"), __FUNCTION__)};
 
-	// TODO
 	return !GetWorld()->OverlapBlockingTestByChannel(Location, FQuat::Identity, Settings->ThirdPerson.TraceChannel,
 	                                                 FCollisionShape::MakeSphere(Settings->ThirdPerson.TraceRadius * MeshScale),
 	                                                 {FreeSpaceTraceTag, false, GetOwner()});

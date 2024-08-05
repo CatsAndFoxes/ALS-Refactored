@@ -43,6 +43,13 @@ AAlsCharacter::AAlsCharacter(const FObjectInitializer& ObjectInitializer) : Supe
 
 		GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickMontagesWhenNotRendered;
 		GetMesh()->bEnableUpdateRateOptimizations = false;
+
+		// Improves performance, but velocities of kinematic physical bodies will not be
+		// calculated, so the ragdoll will not inherit the actor's velocity when activated.
+
+		// TODO Wait until the FPhysScene_Chaos::UpdateKinematicsOnDeferredSkelMeshes() function will be fixed in future engine versions.
+
+		// GetMesh()->bDeferKinematicBoneUpdate = true;
 	}
 
 	AlsCharacterMovement = Cast<UAlsCharacterMovementComponent>(GetCharacterMovement());
@@ -271,7 +278,8 @@ void AAlsCharacter::OnRep_ReplicatedBasedMovement()
 
 void AAlsCharacter::Tick(const float DeltaTime)
 {
-	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("AAlsCharacter::Tick()"), STAT_AAlsCharacter_Tick, STATGROUP_Als)
+	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("AAlsCharacter::Tick"), STAT_AAlsCharacter_Tick, STATGROUP_Als)
+	TRACE_CPUPROFILER_EVENT_SCOPE(AAlsCharacter::Tick);
 
 	if (!IsValid(Settings) || !AnimationInstance.IsValid())
 	{
@@ -530,6 +538,8 @@ void AAlsCharacter::NotifyLocomotionModeChanged(const FGameplayTag& PreviousLoco
 		}
 		else
 		{
+			// Increase friction for a short period of time to prevent sliding on the ground after landing.
+
 			static constexpr auto HasInputBrakingFrictionFactor{0.5f};
 			static constexpr auto NoInputBrakingFrictionFactor{3.0f};
 
@@ -833,6 +843,7 @@ void AAlsCharacter::ApplyDesiredStance()
 bool AAlsCharacter::CanCrouch() const
 {
 	// This allows the ACharacter::Crouch() function to execute properly when bIsCrouched is true.
+
 	// TODO Wait for https://github.com/EpicGames/UnrealEngine/pull/9558 to be merged into the engine.
 
 	return bIsCrouched || Super::CanCrouch();
@@ -845,9 +856,9 @@ void AAlsCharacter::OnStartCrouch(const float HalfHeightAdjust, const float Scal
 	if (PredictionData != nullptr && GetLocalRole() <= ROLE_SimulatedProxy &&
 	    ScaledHalfHeightAdjust > 0.0f && IsPlayingNetworkedRootMotionMontage())
 	{
-		// The code below essentially undoes the changes that will be made later at the end of the UCharacterMovementComponent::Crouch()
-		// function because they literally break network smoothing when crouching while the root motion montage is playing, causing the
-		// mesh to take an incorrect location for a while.
+		// The code below essentially undoes the changes that will be made later at the end of the
+		// UCharacterMovementComponent::Crouch() function because they literally break network smoothing when crouching
+		// while the root motion montage is playing, causing the  mesh to take an incorrect location for a while.
 
 		// TODO Check the need for this hack in future engine versions.
 
@@ -990,12 +1001,14 @@ FGameplayTag AAlsCharacter::CalculateActualGait(const FGameplayTag& MaxAllowedGa
 	// different from the desired gait or max allowed gait. For instance, if the max allowed gait becomes
 	// walking, the new gait will still be running until the character decelerates to the walking speed.
 
-	if (LocomotionState.Speed < AlsCharacterMovement->GetGaitSettings().WalkSpeed + 10.0f)
+	const auto& GaitSettings{AlsCharacterMovement->GetGaitSettings()};
+
+	if (LocomotionState.Speed < GaitSettings.GetMaxWalkSpeed() + 10.0f)
 	{
 		return AlsGaitTags::Walking;
 	}
 
-	if (LocomotionState.Speed < AlsCharacterMovement->GetGaitSettings().RunSpeed + 10.0f || MaxAllowedGait != AlsGaitTags::Sprinting)
+	if (LocomotionState.Speed < GaitSettings.GetMaxRunSpeed() + 10.0f || MaxAllowedGait != AlsGaitTags::Sprinting)
 	{
 		return AlsGaitTags::Running;
 	}
@@ -1479,8 +1492,7 @@ void AAlsCharacter::OnJumpedNetworked()
 
 void AAlsCharacter::FaceRotation(const FRotator Rotation, const float DeltaTime)
 {
-	// Left empty intentionally. We are ignoring rotation changes from external
-	// sources because ALS itself has full control over character rotation.
+	// Left empty intentionally. We ignore rotation changes from external sources because ALS itself has full control over actor rotation.
 }
 
 void AAlsCharacter::CharacterMovement_OnPhysicsRotation(const float DeltaTime)
@@ -1659,7 +1671,7 @@ bool AAlsCharacter::ConstrainAimingRotation(FRotator& ActorRotation, const float
 		return false;
 	}
 
-	ViewRelativeAngle = UAlsRotation::RemapAngleForCounterClockwiseRotation(ViewRelativeAngle);
+	ViewRelativeAngle = UAlsRotation::RemapAngleForClockwiseRotation(ViewRelativeAngle);
 
 	// Secondary constraint. Simply increases the actor's rotation speed. Typically only used when the actor is standing still.
 
@@ -1709,7 +1721,7 @@ float AAlsCharacter::CalculateGroundedMovingRotationInterpolationSpeed() const
 
 	const auto InterpolationSpeed{
 		ALS_ENSURE(IsValid(InterpolationSpeedCurve))
-			? InterpolationSpeedCurve->GetFloatValue(AlsCharacterMovement->CalculateGaitAmount())
+			? InterpolationSpeedCurve->GetFloatValue(AlsCharacterMovement->GetGaitAmount())
 			: DefaultInterpolationSpeed
 	};
 
