@@ -18,7 +18,7 @@ class UAlsMovementSettings;
 class UAlsAnimationInstance;
 class UAlsMantlingSettings;
 
-UCLASS(AutoExpandCategories = ("Settings|Als Character", "Settings|Als Character|Desired State", "State|Als Character"))
+UCLASS(AutoExpandCategories = ("Settings|Als Character", "Settings|Als Character|Desired State"))
 class ALS_API AAlsCharacter : public ACharacter
 {
 	GENERATED_BODY()
@@ -89,6 +89,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State|Als Character",
 		Transient, Replicated, Meta = (ClampMin = -180, ClampMax = 180, ForceUnits = "deg"))
 	float DesiredVelocityYawAngle{0.0f};
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State|Als Character", Transient)
+	uint8 bHasDesiredVelocity : 1 {false};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State|Als Character", Transient)
 	FAlsLocomotionState LocomotionState;
@@ -398,6 +401,12 @@ private:
 	void RefreshLocomotion();
 
 	void RefreshLocomotionLate();
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetInitialVelocityYawAngle(float NewVelocityYawAngle);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastSetInitialVelocityYawAngle(float NewVelocityYawAngle);
 
 	// Jumping
 
