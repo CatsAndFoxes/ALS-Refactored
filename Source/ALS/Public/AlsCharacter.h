@@ -141,6 +141,9 @@ public:
 
 	virtual void Restart() override;
 
+public:
+	const UAlsCharacterSettings* GetSettings() const;
+
 protected:
 	UFUNCTION(BlueprintNativeEvent, Category = "Als Character", Meta = (ReturnDisplayName = "Handled"))
 	bool OnCalculateCamera(float DeltaTime, FMinimalViewInfo& ViewInfo);
@@ -180,7 +183,7 @@ protected:
 
 	virtual void NotifyLocomotionModeChanged(const FGameplayTag& PreviousLocomotionMode);
 
-	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	UFUNCTION(BlueprintImplementableEvent, Category = "Als Character")
 	void OnLocomotionModeChanged(const FGameplayTag& PreviousLocomotionMode);
 
 	// Desired Aiming
@@ -234,7 +237,7 @@ protected:
 
 	virtual void NotifyRotationModeChanged(const FGameplayTag& PreviousRotationMode);
 
-	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	UFUNCTION(BlueprintImplementableEvent, Category = "Als Character")
 	void OnRotationModeChanged(const FGameplayTag& PreviousRotationMode);
 
 	void RefreshRotationMode();
@@ -348,7 +351,7 @@ public:
 protected:
 	virtual void NotifyLocomotionActionChanged(const FGameplayTag& PreviousLocomotionAction);
 
-	UFUNCTION(BlueprintNativeEvent, Category = "Als Character")
+	UFUNCTION(BlueprintImplementableEvent, Category = "Als Character")
 	void OnLocomotionActionChanged(const FGameplayTag& PreviousLocomotionAction);
 
 	// Input
@@ -393,8 +396,6 @@ public:
 
 private:
 	void SetDesiredVelocityYawAngle(float NewVelocityYawAngle);
-
-	void RefreshLocomotionLocationAndRotation();
 
 	void RefreshLocomotionEarly();
 
@@ -458,7 +459,7 @@ protected:
 
 	void SetRotationInstant(float TargetYawAngle, ETeleportType Teleport = ETeleportType::None);
 
-	void RefreshTargetYawAngleUsingLocomotionRotation();
+	void RefreshTargetYawAngleUsingActorRotation();
 
 	void SetTargetYawAngle(float TargetYawAngle);
 
@@ -608,6 +609,11 @@ private:
 
 	void DisplayDebugMantling(const UCanvas* Canvas, float Scale, float HorizontalLocation, float& VerticalLocation) const;
 };
+
+inline const UAlsCharacterSettings* AAlsCharacter::GetSettings() const
+{
+	return Settings;
+}
 
 inline const FGameplayTag& AAlsCharacter::GetViewMode() const
 {
