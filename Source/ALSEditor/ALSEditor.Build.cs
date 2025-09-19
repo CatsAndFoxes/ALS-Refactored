@@ -18,7 +18,7 @@ public class ALSEditor : ModuleRules
         PublicDependencyModuleNames.AddRange(new[]
 		{
 			"Core", "CoreUObject", "Engine", "AnimGraphRuntime", "AnimationModifiers", "AnimationBlueprintLibrary", "ALS"
-		]);
+		});
 
 		if (target.bBuildEditor)
 		{
