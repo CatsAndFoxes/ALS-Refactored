@@ -11,7 +11,7 @@ FTransform UAlsMontageUtility::ExtractRootTransformFromMontage(const UAnimMontag
 {
 	// Based on UMotionWarpingUtilities::ExtractRootTransformFromAnimation().
 
-	if (!ALS_ENSURE(IsValid(Montage)) || !ALS_ENSURE(Montage->SlotAnimTracks.Num() > 0))
+	if (!ALS_ENSURE(IsValid(Montage)) || !ALS_ENSURE(!Montage->SlotAnimTracks.IsEmpty()))
 	{
 		return FTransform::Identity;
 	}
@@ -28,15 +28,16 @@ FTransform UAlsMontageUtility::ExtractRootTransformFromMontage(const UAnimMontag
 		return FTransform::Identity;
 	}
 
-	return Sequence->ExtractRootTrackTransform(Segment->ConvertTrackPosToAnimPos(Time), nullptr);
+	const FAnimExtractContext ExtractionContext{static_cast<double>(Segment->ConvertTrackPosToAnimPos(Time))};
+	return Sequence->ExtractRootTrackTransform(ExtractionContext, nullptr);
 }
 
 FTransform UAlsMontageUtility::ExtractLastRootTransformFromMontage(const UAnimMontage* Montage)
 {
 	// Based on UMotionWarpingUtilities::ExtractRootTransformFromAnimation().
 
-	if (!ALS_ENSURE(IsValid(Montage)) || !ALS_ENSURE(Montage->SlotAnimTracks.Num() > 0) ||
-	    !ALS_ENSURE(Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.Num() > 0))
+	if (!ALS_ENSURE(IsValid(Montage)) || !ALS_ENSURE(!Montage->SlotAnimTracks.IsEmpty()) ||
+	    !ALS_ENSURE(!Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.IsEmpty()))
 	{
 		return FTransform::Identity;
 	}
@@ -49,7 +50,47 @@ FTransform UAlsMontageUtility::ExtractLastRootTransformFromMontage(const UAnimMo
 		return FTransform::Identity;
 	}
 
-	return Sequence->ExtractRootTrackTransform(Segment.GetEndPos(), nullptr);
+	const FAnimExtractContext ExtractionContext{static_cast<double>(Segment.GetEndPos())};
+	return Sequence->ExtractRootTrackTransform(ExtractionContext, nullptr);
+}
+
+void UAlsMontageUtility::StopMontagesWithSlot(UAnimInstance* AnimationInstance, const FName& SlotName, const float BlendOutDuration)
+{
+	if (!ALS_ENSURE(IsValid(AnimationInstance)) || !ALS_ENSURE(!SlotName.IsNone()))
+	{
+		return;
+	}
+
+	for (auto* MontageInstance : AnimationInstance->MontageInstances)
+	{
+		if (MontageInstance == nullptr || !MontageInstance->IsActive())
+		{
+			continue;
+		}
+
+		const auto* Montage{MontageInstance->Montage.Get()};
+
+		for (const auto& SlotTrack : Montage->SlotAnimTracks)
+		{
+			if (SlotTrack.SlotName != SlotName)
+			{
+				continue;
+			}
+
+			FMontageBlendSettings BlendOutSettings{Montage->BlendOut};
+
+			if (BlendOutDuration >= 0.0f)
+			{
+				BlendOutSettings.Blend.BlendTime = BlendOutDuration;
+			}
+
+			BlendOutSettings.BlendMode = Montage->BlendModeOut;
+			BlendOutSettings.BlendProfile = Montage->BlendProfileOut;
+
+			MontageInstance->Stop(BlendOutSettings);
+			break;
+		}
+	}
 }
 
 void UAlsMontageUtility::StopMontagesWithAnySharedSlots(UAnimInstance* AnimationInstance, const UAnimMontage* ReferenceMontage,
@@ -60,7 +101,7 @@ void UAlsMontageUtility::StopMontagesWithAnySharedSlots(UAnimInstance* Animation
 		return;
 	}
 
-	TSet<FName, DefaultKeyFuncs<FName>, TInlineSetAllocator<4>> SlotNames;
+	TSet<FName, DefaultKeyFuncs<FName>, TInlineSetAllocator<8>> SlotNames;
 	SlotNames.Reserve(ReferenceMontage->SlotAnimTracks.Num());
 
 	for (const auto& SlotTrack : ReferenceMontage->SlotAnimTracks)
