@@ -14,11 +14,10 @@ UCLASS(ClassGroup = "ALS", Meta = (BlueprintSpawnableComponent),
 class ALSCAMERA_API UAlsCameraComponent : public USkeletalMeshComponent
 {
 	GENERATED_BODY()
+	
+	friend class UVirtualSocietyCamera;
 
 protected:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
-	TObjectPtr<UAlsCameraSettings> Settings;
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings", Meta = (InlineEditConditionToggle))
 	uint8 bOverrideFieldOfView : 1 {false};
 
@@ -75,6 +74,9 @@ protected:
 	uint8 bRightShoulder : 1 {true};
 
 public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Settings")
+	TObjectPtr<UAlsCameraSettings> Settings;
+	
 	UAlsCameraComponent();
 
 	virtual void PostLoad() override;
@@ -126,6 +128,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "ALS|Camera")
 	void GetViewInfo(FMinimalViewInfo& ViewInfo) const;
 
+	virtual FVector CalculateCameraTrace(const FVector& CameraTargetLocation, const FVector& PivotOffset,
+								 const float DeltaTime, const bool bAllowLag, float& NewTraceDistanceRatio) const;
+
 private:
 	void TickCamera(float DeltaTime, bool bAllowLag = true);
 
@@ -138,9 +143,6 @@ private:
 	FVector CalculateCameraOffset() const;
 
 	float CalculateFovOffset() const;
-
-	FVector CalculateCameraTrace(const FVector& CameraTargetLocation, const FVector& PivotOffset,
-	                             float DeltaTime, bool bAllowLag, float& NewTraceDistanceRatio) const;
 
 	bool TryAdjustLocationBlockedByGeometry(FVector& Location, bool bDisplayDebugCameraTraces) const;
 

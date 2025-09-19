@@ -10,15 +10,23 @@ public class ALSEditor : ModuleRules
 		// CppCompileWarningSettings.UnsafeTypeCastWarningLevel = WarningLevel.Warning;
 		CppCompileWarningSettings.NonInlinedGenCppWarningLevel = WarningLevel.Warning;
 
-		PublicDependencyModuleNames.AddRange([
+		PrivateDependencyModuleNames.AddRange(new[]
+        {
+            "AnimGraphRuntime"
+        });
+        
+        PublicDependencyModuleNames.AddRange(new[]
+		{
 			"Core", "CoreUObject", "Engine", "AnimGraphRuntime", "AnimationModifiers", "AnimationBlueprintLibrary", "ALS"
 		]);
 
 		if (target.bBuildEditor)
 		{
-			PublicDependencyModuleNames.AddRange([
-				"AnimGraph"
-			]);
+			PublicDependencyModuleNames.AddRange(new[]
+			{
+				"AnimGraph",
+				"AnimGraphRuntime",
+			});
 
 			PrivateDependencyModuleNames.AddRange([
 				"BlueprintGraph"
