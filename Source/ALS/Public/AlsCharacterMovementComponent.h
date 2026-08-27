@@ -18,6 +18,15 @@ public:
 
 	FGameplayTag MaxAllowedGait{AlsGaitTags::Running};
 
+	// The gait amount the client sampled the acceleration curve at when it scaled its input acceleration. Required
+	// because UCharacterMovementComponent::MoveAutonomous() divides the received acceleration by GetMaxAcceleration()
+	// to recover the analog input modifier, so the server must use the exact same max acceleration as the client.
+	float GaitAmount{0.0f};
+
+	// The forward to backward speed blend the client used while simulating this move. Required because the blend is
+	// derived from the velocity direction, which the server cannot reproduce exactly, and it feeds MaxWalkSpeed.
+	float ForwardSpeedAmount{1.0f};
+
 public:
 	virtual void ClientFillNetworkMoveData(const FSavedMove_Character& Move, ENetworkMoveType MoveType) override;
 
@@ -45,6 +54,14 @@ public:
 
 	FGameplayTag MaxAllowedGait{AlsGaitTags::Running};
 
+	// The gait amount the acceleration curve was sampled at when this move was recorded. Sent to the server and also
+	// restored before the move is replayed locally, so that both simulations use the same max acceleration.
+	float GaitAmount{0.0f};
+
+	// The forward to backward speed blend that was used while this move was simulated. Recorded after the simulation
+	// because, unlike the gait amount, the blend is refreshed inside the move itself rather than before it.
+	float ForwardSpeedAmount{1.0f};
+
 public:
 	virtual void Clear() override;
 
@@ -55,6 +72,8 @@ public:
 
 	virtual void CombineWith(const FSavedMove_Character* PreviousMove, ACharacter* Character,
 	                         APlayerController* Player, const FVector& PreviousStartLocation) override;
+
+	virtual void PostUpdate(ACharacter* Character, EPostUpdateMode PostUpdateMode) override;
 
 	virtual void PrepMoveFor(ACharacter* Character) override;
 };
@@ -103,6 +122,19 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient, Meta = (ClampMin = 0, ClampMax = 3))
 	float GaitAmount{0.0f};
+
+	// Blend between the backward and forward movement speeds, where 0 is fully backward and 1 is fully forward.
+	// Only meaningful when bAllowDirectionDependentMovementSpeed is enabled, otherwise it stays at 1.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient, Meta = (ClampMin = 0, ClampMax = 1))
+	float ForwardSpeedAmount{1.0f};
+
+	// Forward speed amount received from the autonomous proxy, used instead of the locally computed one while its
+	// move is being executed, because the velocity direction it is derived from is not synchronized over the network.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient, Meta = (ClampMin = 0, ClampMax = 1))
+	float NetworkedForwardSpeedAmount{1.0f};
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient)
+	uint8 bUseNetworkedForwardSpeedAmount : 1 {false};
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State", Transient, Meta = (ClampMin = 0, ForceUnits = "cm/s^2"))
 	float MaxAccelerationWalking{0.0f};

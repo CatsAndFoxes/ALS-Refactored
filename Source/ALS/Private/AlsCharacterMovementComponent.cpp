@@ -22,6 +22,8 @@ void FAlsCharacterNetworkMoveData::ClientFillNetworkMoveData(const FSavedMove_Ch
 	RotationMode = SavedMove.RotationMode;
 	Stance = SavedMove.Stance;
 	MaxAllowedGait = SavedMove.MaxAllowedGait;
+	GaitAmount = SavedMove.GaitAmount;
+	ForwardSpeedAmount = SavedMove.ForwardSpeedAmount;
 }
 
 bool FAlsCharacterNetworkMoveData::Serialize(UCharacterMovementComponent& Movement, FArchive& Archive,
@@ -32,6 +34,8 @@ bool FAlsCharacterNetworkMoveData::Serialize(UCharacterMovementComponent& Moveme
 	NetSerializeOptionalValue(Archive.IsSaving(), Archive, RotationMode, AlsRotationModeTags::ViewDirection.GetTag(), Map);
 	NetSerializeOptionalValue(Archive.IsSaving(), Archive, Stance, AlsStanceTags::Standing.GetTag(), Map);
 	NetSerializeOptionalValue(Archive.IsSaving(), Archive, MaxAllowedGait, AlsGaitTags::Running.GetTag(), Map);
+	SerializeOptionalValue(Archive.IsSaving(), Archive, GaitAmount, 0.0f);
+	SerializeOptionalValue(Archive.IsSaving(), Archive, ForwardSpeedAmount, 1.0f);
 
 	return !Archive.IsError();
 }
@@ -50,6 +54,8 @@ void FAlsSavedMove::Clear()
 	RotationMode = AlsRotationModeTags::ViewDirection;
 	Stance = AlsStanceTags::Standing;
 	MaxAllowedGait = AlsGaitTags::Running;
+	GaitAmount = 0.0f;
+	ForwardSpeedAmount = 1.0f;
 }
 
 void FAlsSavedMove::SetMoveFor(ACharacter* Character, const float NewDeltaTime, const FVector& NewAcceleration,
@@ -63,6 +69,12 @@ void FAlsSavedMove::SetMoveFor(ACharacter* Character, const float NewDeltaTime, 
 		RotationMode = Movement->RotationMode;
 		Stance = Movement->Stance;
 		MaxAllowedGait = Movement->MaxAllowedGait;
+
+		// This function runs after UCharacterMovementComponent::ControlledCharacterMove() has already scaled the input
+		// acceleration by GetMaxAcceleration(), so the gait amount recorded here is exactly the one the acceleration
+		// curve was sampled at to produce that scale.
+
+		GaitAmount = Movement->GaitAmount;
 	}
 }
 
@@ -99,6 +111,21 @@ void FAlsSavedMove::CombineWith(const FSavedMove_Character* PreviousMove, AChara
 	MutablePreviousMove->StartAttachRelativeRotation = OriginalRelativeRotation;
 }
 
+void FAlsSavedMove::PostUpdate(ACharacter* Character, const EPostUpdateMode PostUpdateMode)
+{
+	Super::PostUpdate(Character, PostUpdateMode);
+
+	// Unlike the gait amount, which is already known before the move runs because the input acceleration is scaled
+	// with it, the forward speed amount is refreshed from inside the move itself, so it can only be recorded here.
+	// Replaying a move forces the recorded value back in, which makes this write idempotent for PostUpdate_Replay.
+
+	const auto* Movement{Cast<UAlsCharacterMovementComponent>(Character->GetCharacterMovement())};
+	if (IsValid(Movement))
+	{
+		ForwardSpeedAmount = Movement->ForwardSpeedAmount;
+	}
+}
+
 void FAlsSavedMove::PrepMoveFor(ACharacter* Character)
 {
 	Super::PrepMoveFor(Character);
@@ -111,6 +138,30 @@ void FAlsSavedMove::PrepMoveFor(ACharacter* Character)
 		Movement->MaxAllowedGait = MaxAllowedGait;
 
 		Movement->RefreshGaitSettings();
+
+		// Replaying a saved move goes through UCharacterMovementComponent::MoveAutonomous(), which clamps the saved
+		// acceleration to GetMaxAcceleration() and then divides by it again to recover the analog input modifier.
+		// Restore the gait amount the move was recorded with so the replay reproduces the original acceleration
+		// instead of sampling the curve at whatever velocity the server correction left us at.
+
+		Movement->GaitAmount = GaitAmount;
+
+		if (IsValid(Movement->GaitSettings.AccelerationAndDecelerationAndGroundFrictionCurve))
+		{
+			const auto& AccelerationAndDecelerationAndGroundFrictionCurves{
+				Movement->GaitSettings.AccelerationAndDecelerationAndGroundFrictionCurve->FloatCurves
+			};
+
+			Movement->MaxAccelerationWalking = AccelerationAndDecelerationAndGroundFrictionCurves[0].Eval(GaitAmount);
+			Movement->BrakingDecelerationWalking = AccelerationAndDecelerationAndGroundFrictionCurves[1].Eval(GaitAmount);
+			Movement->GroundFriction = AccelerationAndDecelerationAndGroundFrictionCurves[2].Eval(GaitAmount);
+		}
+
+		// Same for the forward speed amount, except that it is consumed from inside the move, so the override has to
+		// stay active until UAlsCharacterMovementComponent::MoveAutonomous() clears it once the replay is done.
+
+		Movement->NetworkedForwardSpeedAmount = ForwardSpeedAmount;
+		Movement->bUseNetworkedForwardSpeedAmount = true;
 	}
 }
 
@@ -860,9 +911,41 @@ void UAlsCharacterMovementComponent::MoveAutonomous(const float ClientTimeStamp,
 		MaxAllowedGait = MoveData->MaxAllowedGait;
 
 		RefreshGaitSettings();
+
+		// The client scales its input acceleration by GetMaxAcceleration(), which we derive from a curve sampled at the
+		// gait amount, which in turn is derived from the velocity. Super::MoveAutonomous() then divides the received
+		// acceleration by GetMaxAcceleration() again to recover the analog input modifier, which caps the maximum
+		// speed. Sampling the curve at the server's own velocity instead of the client's therefore recovers a wrong
+		// input modifier, caps the server at a different speed than the client, and the resulting velocity difference
+		// feeds straight back into the next curve sample, so the position error keeps growing until the server has to
+		// correct the client. Use the gait amount the client actually sampled the curve at to break that loop.
+
+		GaitAmount = MoveData->GaitAmount;
+
+		if (IsValid(GaitSettings.AccelerationAndDecelerationAndGroundFrictionCurve))
+		{
+			const auto& AccelerationAndDecelerationAndGroundFrictionCurves{
+				GaitSettings.AccelerationAndDecelerationAndGroundFrictionCurve->FloatCurves
+			};
+
+			MaxAccelerationWalking = AccelerationAndDecelerationAndGroundFrictionCurves[0].Eval(GaitAmount);
+			BrakingDecelerationWalking = AccelerationAndDecelerationAndGroundFrictionCurves[1].Eval(GaitAmount);
+			GroundFriction = AccelerationAndDecelerationAndGroundFrictionCurves[2].Eval(GaitAmount);
+		}
+
+		// The forward to backward speed blend is derived from the velocity direction, which the server cannot
+		// reproduce exactly, and it decides MaxWalkSpeed. Unlike the gait amount it is refreshed from inside the move,
+		// so the override has to stay active for the whole move instead of being applied once before it.
+
+		NetworkedForwardSpeedAmount = MoveData->ForwardSpeedAmount;
+		bUseNetworkedForwardSpeedAmount = true;
 	}
 
 	Super::MoveAutonomous(ClientTimeStamp, DeltaTime, CompressedFlags, NewAcceleration);
+
+	// Also clears the override set by FAlsSavedMove::PrepMoveFor() when a saved move is replayed on the client.
+
+	bUseNetworkedForwardSpeedAmount = false;
 
 	// Process view network smoothing on the listen server.
 
@@ -929,30 +1012,40 @@ void UAlsCharacterMovementComponent::RefreshGroundedMovementSettings()
 	auto WalkSpeed{GaitSettings.WalkForwardSpeed};
 	auto RunSpeed{GaitSettings.RunForwardSpeed};
 
-	if (GaitSettings.bAllowDirectionDependentMovementSpeed &&
-	    Velocity.SizeSquared() > UE_KINDA_SMALL_NUMBER &&
-	    IsValid(MovementSettings))
+	ForwardSpeedAmount = 1.0f;
+
+	if (GaitSettings.bAllowDirectionDependentMovementSpeed && IsValid(MovementSettings))
 	{
-		const auto* Controller{GetController()};
+		if (bUseNetworkedForwardSpeedAmount)
+		{
+			// While executing a move that came from the autonomous proxy, the velocity direction the blend is derived
+			// from does not match the one the client had, and the resulting MaxWalkSpeed difference would cap the two
+			// simulations at different speeds. Use the blend the client actually simulated with instead.
 
-		const auto ViewRotation{
-			IsValid(Controller)
-				? GetController()->GetControlRotation()
-				: GetCharacterOwner()->GetViewRotation()
-		};
+			ForwardSpeedAmount = NetworkedForwardSpeedAmount;
+		}
+		else if (Velocity.SizeSquared() > UE_KINDA_SMALL_NUMBER)
+		{
+			const auto* Controller{GetController()};
 
-		// Ideally we should use actor rotation here instead of view rotation, but we can't do that because ALS has
-		// full control over actor rotation and it is not synchronized over the network, so it would cause jitter.
+			const auto ViewRotation{
+				IsValid(Controller)
+					? GetController()->GetControlRotation()
+					: GetCharacterOwner()->GetViewRotation()
+			};
 
-		const auto RelativeViewRotation{UAlsRotation::GetTwist(ViewRotation.Quaternion(), -GetGravityDirection())};
+			// Ideally we should use actor rotation here instead of view rotation, but we can't do that because ALS has
+			// full control over actor rotation and it is not synchronized over the network, so it would cause jitter.
 
-		const FVector2D RelativeVelocity{RelativeViewRotation.UnrotateVector(Velocity)};
-		const auto VelocityAngle{UAlsVector::DirectionToAngle(RelativeVelocity)};
+			const auto RelativeViewRotation{UAlsRotation::GetTwist(ViewRotation.Quaternion(), -GetGravityDirection())};
 
-		const auto ForwardSpeedAmount{
-			1.0f - UAlsMath::Clamp01(MovementSettings->VelocityAngleToSpeedInterpolationRange
-			                                         .GetRangePct(static_cast<float>(FMath::Abs(VelocityAngle))))
-		};
+			const FVector2D RelativeVelocity{RelativeViewRotation.UnrotateVector(Velocity)};
+			const auto VelocityAngle{UAlsVector::DirectionToAngle(RelativeVelocity)};
+
+			ForwardSpeedAmount = 1.0f - UAlsMath::Clamp01(MovementSettings->VelocityAngleToSpeedInterpolationRange
+			                                                              .GetRangePct(
+				                                                              static_cast<float>(FMath::Abs(VelocityAngle))));
+		}
 
 		WalkSpeed = FMath::Lerp(GaitSettings.WalkBackwardSpeed, GaitSettings.WalkForwardSpeed, ForwardSpeedAmount);
 		RunSpeed = FMath::Lerp(GaitSettings.RunBackwardSpeed, GaitSettings.RunForwardSpeed, ForwardSpeedAmount);
